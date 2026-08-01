@@ -1,0 +1,59 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - wastedassign
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    gosec:
+      excludes:
+        - G104 # handled by errcheck
+    revive:
+      rules:
+        - name: exported
+          arguments: ["disableStutteringCheck"]
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: indent-error-flow
+        - name: var-naming
+
+  exclusions:
+    generated: lax
+    rules:
+      # sqlc-generated code is not ours to lint.
+      - path: internal/repository/db/
+        linters: [revive, gocritic, unused, stylecheck]
+      - path: _test\.go
+        linters: [gosec, errcheck, noctx]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Karan0009/wordotron_api

@@ -1,0 +1,54 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "sql/queries"
+    gen:
+      go:
+        package: "db"
+        out: "internal/repository/db"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_empty_slices: true
+        emit_prepared_queries: false
+        emit_exact_table_names: false
+        emit_json_tags: false
+        overrides:
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+          - db_type: "pg_catalog.timestamptz"
+            go_type: "time.Time"
+          - db_type: "pg_catalog.timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+          - db_type: "text"
+            nullable: true
+            go_type:
+              type: "string"
+              pointer: true
+          - db_type: "citext"
+            go_type: "string"
+          - db_type: "pg_catalog.text"
+            nullable: true
+            go_type:
+              type: "string"
+              pointer: true
+          - db_type: "bool"
+            nullable: true
+            go_type:
+              type: "bool"
+              pointer: true
+          - db_type: "pg_catalog.bool"
+            nullable: true
+            go_type:
+              type: "bool"
+              pointer: true

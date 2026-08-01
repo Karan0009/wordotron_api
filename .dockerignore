@@ -1,0 +1,10 @@
+.git
+.github
+.env
+.data
+bin
+tests
+docs/*.html
+README.md
+Makefile
+coverage.*
