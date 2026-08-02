@@ -1,5 +1,5 @@
 -- name: CreateWord :one
-INSERT INTO words (term, language, part_of_speech, definition, example, pronunciation, tags, created_by)
+INSERT INTO words (term, language, part_of_speech, definition, example, pronunciation, tags, meta, created_by)
 VALUES (
     $1,
     $2,
@@ -8,6 +8,7 @@ VALUES (
     sqlc.narg('example')::text,
     sqlc.narg('pronunciation')::text,
     sqlc.arg('tags')::text[],
+    COALESCE(sqlc.narg('meta')::jsonb, '{}'::jsonb),
     sqlc.narg('created_by')::uuid
 )
 RETURNING *;
@@ -36,7 +37,8 @@ SET term           = COALESCE(sqlc.narg('term')::citext, term),
                           ELSE COALESCE(sqlc.narg('example')::text, example) END,
     pronunciation  = CASE WHEN sqlc.arg('clear_pronunciation')::bool THEN NULL
                           ELSE COALESCE(sqlc.narg('pronunciation')::text, pronunciation) END,
-    tags           = COALESCE(sqlc.narg('tags')::text[], tags)
+    tags           = COALESCE(sqlc.narg('tags')::text[], tags),
+    meta           = COALESCE(sqlc.narg('meta')::jsonb, meta)
 WHERE id = sqlc.arg('id')::uuid
 RETURNING *;
 

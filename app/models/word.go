@@ -6,6 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
+// todo: no word_repository.go/word_service.go exists yet. When building that
+// layer, decide whether to keep the models.Word <-> db.Word conversion (as
+// User does) or skip models.Word and have the repository/service work with
+// db.Word directly, converting to a serializer response only at the handler
+// boundary. Nothing forces either choice today - this file currently just
+// holds the Create/Update input types with no repository consuming them.
+
 // PartOfSpeech constrains the grammatical category of an entry. The empty
 // value is meaningful: not every entry has one (proper nouns, phrases).
 type PartOfSpeech string
@@ -38,6 +45,13 @@ func (p PartOfSpeech) Valid() bool {
 	return false
 }
 
+// WordMeta holds free-form lexical metadata that doesn't warrant its own
+// column: synonyms, antonyms, and anything added later. Stored as JSONB.
+type WordMeta struct {
+	Synonyms []string `json:"synonyms,omitempty"`
+	Antonyms []string `json:"antonyms,omitempty"`
+}
+
 // Word is an entry in the shared vocabulary catalogue. It holds no per-user
 // state; that lives on UserWord.
 type Word struct {
@@ -49,6 +63,7 @@ type Word struct {
 	Example       *string    `json:"example"`
 	Pronunciation *string    `json:"pronunciation"`
 	Tags          []string   `json:"tags"`
+	Meta          WordMeta   `json:"meta"`
 	CreatedBy     *uuid.UUID `json:"created_by"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
@@ -63,6 +78,7 @@ type CreateWordInput struct {
 	Example       *string
 	Pronunciation *string
 	Tags          []string
+	Meta          *WordMeta
 	CreatedBy     *uuid.UUID
 }
 
@@ -77,6 +93,8 @@ type UpdateWordInput struct {
 	Example       *string
 	Pronunciation *string
 	Tags          []string
+	// Meta replaces the whole blob when set, same as Tags - not a deep merge.
+	Meta *WordMeta
 
 	ClearPartOfSpeech  bool
 	ClearExample       bool

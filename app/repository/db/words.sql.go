@@ -45,7 +45,7 @@ func (q *Queries) CountWords(ctx context.Context, arg CountWordsParams) (int64, 
 }
 
 const createWord = `-- name: CreateWord :one
-INSERT INTO words (term, language, part_of_speech, definition, example, pronunciation, tags, created_by)
+INSERT INTO words (term, language, part_of_speech, definition, example, pronunciation, tags, meta, created_by)
 VALUES (
     $1,
     $2,
@@ -54,9 +54,10 @@ VALUES (
     $5::text,
     $6::text,
     $7::text[],
-    $8::uuid
+    COALESCE($8::jsonb, '{}'::jsonb),
+    $9::uuid
 )
-RETURNING id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at
+RETURNING id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at, meta
 `
 
 type CreateWordParams struct {
@@ -67,6 +68,7 @@ type CreateWordParams struct {
 	Example       *string
 	Pronunciation *string
 	Tags          []string
+	Meta          []byte
 	CreatedBy     pgtype.UUID
 }
 
@@ -79,6 +81,7 @@ func (q *Queries) CreateWord(ctx context.Context, arg CreateWordParams) (Word, e
 		arg.Example,
 		arg.Pronunciation,
 		arg.Tags,
+		arg.Meta,
 		arg.CreatedBy,
 	)
 	var i Word
@@ -94,6 +97,7 @@ func (q *Queries) CreateWord(ctx context.Context, arg CreateWordParams) (Word, e
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Meta,
 	)
 	return i, err
 }
@@ -111,7 +115,7 @@ func (q *Queries) DeleteWord(ctx context.Context, id uuid.UUID) (int64, error) {
 }
 
 const getWord = `-- name: GetWord :one
-SELECT id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at FROM words WHERE id = $1
+SELECT id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at, meta FROM words WHERE id = $1
 `
 
 func (q *Queries) GetWord(ctx context.Context, id uuid.UUID) (Word, error) {
@@ -129,12 +133,13 @@ func (q *Queries) GetWord(ctx context.Context, id uuid.UUID) (Word, error) {
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Meta,
 	)
 	return i, err
 }
 
 const getWordByTerm = `-- name: GetWordByTerm :one
-SELECT id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at FROM words
+SELECT id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at, meta FROM words
 WHERE language = $1
   AND term = $2
   AND COALESCE(part_of_speech, '') = COALESCE($3::text, '')
@@ -163,6 +168,7 @@ func (q *Queries) GetWordByTerm(ctx context.Context, arg GetWordByTermParams) (W
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Meta,
 	)
 	return i, err
 }
@@ -208,7 +214,7 @@ func (q *Queries) ListWordTags(ctx context.Context, arg ListWordTagsParams) ([]L
 }
 
 const listWords = `-- name: ListWords :many
-SELECT id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at FROM words
+SELECT id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at, meta FROM words
 WHERE ($1::text IS NULL
         OR term       ILIKE '%' || $1::text || '%'
         OR definition ILIKE '%' || $1::text || '%')
@@ -271,6 +277,7 @@ func (q *Queries) ListWords(ctx context.Context, arg ListWordsParams) ([]Word, e
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Meta,
 		); err != nil {
 			return nil, err
 		}
@@ -293,9 +300,10 @@ SET term           = COALESCE($1::citext, term),
                           ELSE COALESCE($7::text, example) END,
     pronunciation  = CASE WHEN $8::bool THEN NULL
                           ELSE COALESCE($9::text, pronunciation) END,
-    tags           = COALESCE($10::text[], tags)
-WHERE id = $11::uuid
-RETURNING id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at
+    tags           = COALESCE($10::text[], tags),
+    meta           = COALESCE($11::jsonb, meta)
+WHERE id = $12::uuid
+RETURNING id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at, meta
 `
 
 type UpdateWordParams struct {
@@ -309,6 +317,7 @@ type UpdateWordParams struct {
 	ClearPronunciation bool
 	Pronunciation      *string
 	Tags               []string
+	Meta               []byte
 	ID                 uuid.UUID
 }
 
@@ -326,6 +335,7 @@ func (q *Queries) UpdateWord(ctx context.Context, arg UpdateWordParams) (Word, e
 		arg.ClearPronunciation,
 		arg.Pronunciation,
 		arg.Tags,
+		arg.Meta,
 		arg.ID,
 	)
 	var i Word
@@ -341,6 +351,7 @@ func (q *Queries) UpdateWord(ctx context.Context, arg UpdateWordParams) (Word, e
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Meta,
 	)
 	return i, err
 }

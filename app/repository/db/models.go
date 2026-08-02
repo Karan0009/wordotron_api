@@ -80,4 +80,5 @@ type Word struct {
 	CreatedBy     pgtype.UUID
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	Meta          []byte
 }
