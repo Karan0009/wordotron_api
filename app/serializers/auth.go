@@ -14,7 +14,7 @@ import (
 // RegisterRequest is the body of POST /api/v1/auth/register.
 type RegisterRequest struct {
 	Email    string `json:"email"    validate:"required,email,max=254"`
-	Password string `json:"password" validate:"required,min=12,max=72,strongpassword"`
+	Password string `json:"password" validate:"required,min=6,max=15,strongpassword"`
 	FullName string `json:"full_name" validate:"required,min=2,max=120"`
 }
 
