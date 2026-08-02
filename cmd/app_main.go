@@ -17,6 +17,7 @@ import (
 	"github.com/Karan0009/wordotron_api/app/handlers"
 	"github.com/Karan0009/wordotron_api/app/lib"
 	"github.com/Karan0009/wordotron_api/app/lib/auth"
+	"github.com/Karan0009/wordotron_api/app/lib/dictionary"
 	"github.com/Karan0009/wordotron_api/app/lib/storage"
 	"github.com/Karan0009/wordotron_api/app/lib/validation"
 	"github.com/Karan0009/wordotron_api/app/repository"
@@ -100,6 +101,14 @@ func run() error {
 	authService := services.NewAuthService(store, hasher, tokens, sessions, cfg, log)
 	userService := services.NewUserService(store, hasher, sessions, files, cfg, log)
 
+	// enricher is nil when OpenAI isn't configured; WordService.CreateAndEnrich
+	// reports a clear 503 rather than the caller nil-panicking.
+	var enricher dictionary.Enricher
+	if cfg.OpenAI.Enabled() {
+		enricher = dictionary.NewOpenAIEnricher(cfg.OpenAI)
+	}
+	wordService := services.NewWordService(store, enricher, cfg, log)
+
 	app := server.NewApp(routes.Dependencies{
 		Config:   cfg,
 		Logger:   log,
@@ -110,6 +119,7 @@ func run() error {
 		Users:    handlers.NewUserHandler(userService, validator, cfg),
 		Health:   handlers.NewHealthHandler(pool, redisClient, version, cfg.App.Env),
 		Files:    handlers.NewFileHandler(files),
+		Words:    handlers.NewWordHandler(wordService, validator),
 	})
 
 	// todo:

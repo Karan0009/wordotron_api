@@ -69,8 +69,7 @@ FROM user_words uw
 JOIN words w ON w.id = uw.word_id
 WHERE uw.user_id = $1::uuid
   AND ($2::text IS NULL
-        OR w.term       ILIKE '%' || $2::text || '%'
-        OR w.definition ILIKE '%' || $2::text || '%')
+        OR w.term ILIKE '%' || $2::text || '%')
   AND ($3::text IS NULL       OR uw.status = $3::text)
   AND ($4::text IS NULL     OR w.language = $4::text)
   AND ($5::text[] IS NULL       OR w.tags @> $5::text[])
@@ -190,9 +189,6 @@ SELECT
     uw.updated_at,
     w.term           AS word_term,
     w.language       AS word_language,
-    w.part_of_speech AS word_part_of_speech,
-    w.definition     AS word_definition,
-    w.example        AS word_example,
     w.pronunciation  AS word_pronunciation,
     w.tags           AS word_tags,
     w.created_by     AS word_created_by,
@@ -201,9 +197,9 @@ SELECT
 FROM user_words uw
 JOIN words w ON w.id = uw.word_id
 WHERE uw.user_id = $1::uuid
+  -- Definitions live on word_senses now; this only matches the term itself.
   AND ($2::text IS NULL
-        OR w.term       ILIKE '%' || $2::text || '%'
-        OR w.definition ILIKE '%' || $2::text || '%')
+        OR w.term ILIKE '%' || $2::text || '%')
   AND ($3::text IS NULL       OR uw.status = $3::text)
   AND ($4::text IS NULL     OR w.language = $4::text)
   AND ($5::text[] IS NULL       OR w.tags @> $5::text[])
@@ -250,9 +246,6 @@ type ListUserWordsRow struct {
 	UpdatedAt         time.Time
 	WordTerm          string
 	WordLanguage      string
-	WordPartOfSpeech  *string
-	WordDefinition    string
-	WordExample       *string
 	WordPronunciation *string
 	WordTags          []string
 	WordCreatedBy     pgtype.UUID
@@ -298,9 +291,6 @@ func (q *Queries) ListUserWords(ctx context.Context, arg ListUserWordsParams) ([
 			&i.UpdatedAt,
 			&i.WordTerm,
 			&i.WordLanguage,
-			&i.WordPartOfSpeech,
-			&i.WordDefinition,
-			&i.WordExample,
 			&i.WordPronunciation,
 			&i.WordTags,
 			&i.WordCreatedBy,

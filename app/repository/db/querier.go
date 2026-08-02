@@ -25,10 +25,13 @@ type Querier interface {
 	CreatePasswordResetToken(ctx context.Context, arg CreatePasswordResetTokenParams) (PasswordResetToken, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateWord(ctx context.Context, arg CreateWordParams) (Word, error)
+	CreateWordSense(ctx context.Context, arg CreateWordSenseParams) (WordSense, error)
 	DeleteExpiredEmailVerificationTokens(ctx context.Context) (int64, error)
 	DeleteExpiredPasswordResetTokens(ctx context.Context) (int64, error)
 	DeleteUser(ctx context.Context, id uuid.UUID) (int64, error)
 	DeleteWord(ctx context.Context, id uuid.UUID) (int64, error)
+	DeleteWordSense(ctx context.Context, id uuid.UUID) (int64, error)
+	DeleteWordSensesByWord(ctx context.Context, wordID uuid.UUID) error
 	EmailExists(ctx context.Context, email string) (bool, error)
 	GetEmailVerificationToken(ctx context.Context, tokenHash string) (EmailVerificationToken, error)
 	// Looks up a local account by the external identity. Keyed on the provider's
@@ -42,9 +45,8 @@ type Querier interface {
 	// Powers the progress header in one query rather than five counts.
 	GetUserWordStats(ctx context.Context, userID uuid.UUID) (GetUserWordStatsRow, error)
 	GetWord(ctx context.Context, id uuid.UUID) (Word, error)
-	// The natural key. COALESCE mirrors the unique index so a lookup with no part
-	// of speech finds the row stored without one.
 	GetWordByTerm(ctx context.Context, arg GetWordByTermParams) (Word, error)
+	GetWordSense(ctx context.Context, id uuid.UUID) (WordSense, error)
 	InvalidateUserEmailVerificationTokens(ctx context.Context, userID uuid.UUID) error
 	InvalidateUserPasswordResetTokens(ctx context.Context, userID uuid.UUID) error
 	LinkOAuthAccount(ctx context.Context, arg LinkOAuthAccountParams) (OauthAccount, error)
@@ -52,6 +54,7 @@ type Querier interface {
 	// client renders. Column names are prefixed to keep them unambiguous in Go.
 	ListUserWords(ctx context.Context, arg ListUserWordsParams) ([]ListUserWordsRow, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
+	ListWordSensesByWord(ctx context.Context, wordID uuid.UUID) ([]WordSense, error)
 	// Distinct tags with usage counts, for filter menus and autocomplete.
 	ListWordTags(ctx context.Context, arg ListWordTagsParams) ([]ListWordTagsRow, error)
 	ListWords(ctx context.Context, arg ListWordsParams) ([]Word, error)
@@ -82,6 +85,9 @@ type Querier interface {
 	// Partial update: every field falls back to its current value, so a caller
 	// sends only what changed.
 	UpdateWord(ctx context.Context, arg UpdateWordParams) (Word, error)
+	// Partial update: every field falls back to its current value, so a caller
+	// sends only what changed.
+	UpdateWordSense(ctx context.Context, arg UpdateWordSenseParams) (WordSense, error)
 }
 
 var _ Querier = (*Queries)(nil)

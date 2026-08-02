@@ -19,6 +19,8 @@ type Store interface {
 	Users() UserRepository
 	PasswordResets() PasswordResetRepository
 	EmailVerifications() EmailVerificationRepository
+	Words() WordRepository
+	WordSenses() WordSenseRepository
 
 	// WithTx runs fn against a Store bound to a single transaction. Returning
 	// a non-nil error rolls back; returning nil commits.
@@ -32,6 +34,8 @@ type pgStore struct {
 	users              UserRepository
 	passwordResets     PasswordResetRepository
 	emailVerifications EmailVerificationRepository
+	words              WordRepository
+	wordSenses         WordSenseRepository
 }
 
 var _ Store = (*pgStore)(nil)
@@ -48,12 +52,16 @@ func newStore(pool *pgxpool.Pool, queries *db.Queries) *pgStore {
 		users:              &userRepository{q: queries},
 		passwordResets:     &passwordResetRepository{q: queries},
 		emailVerifications: &emailVerificationRepository{q: queries},
+		words:              &wordRepository{q: queries},
+		wordSenses:         &wordSenseRepository{q: queries},
 	}
 }
 
 func (s *pgStore) Users() UserRepository                           { return s.users }
 func (s *pgStore) PasswordResets() PasswordResetRepository         { return s.passwordResets }
 func (s *pgStore) EmailVerifications() EmailVerificationRepository { return s.emailVerifications }
+func (s *pgStore) Words() WordRepository                           { return s.words }
+func (s *pgStore) WordSenses() WordSenseRepository                 { return s.wordSenses }
 
 func (s *pgStore) WithTx(ctx context.Context, fn func(Store) error) error {
 	if s.pool == nil {

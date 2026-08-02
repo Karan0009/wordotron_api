@@ -14,28 +14,23 @@ import (
 
 const countWords = `-- name: CountWords :one
 SELECT COUNT(*) FROM words
-WHERE ($1::text IS NULL
-        OR term       ILIKE '%' || $1::text || '%'
-        OR definition ILIKE '%' || $1::text || '%')
-  AND ($2::text IS NULL       OR language = $2::text)
-  AND ($3::text IS NULL OR part_of_speech = $3::text)
-  AND ($4::text[] IS NULL         OR tags @> $4::text[])
-  AND ($5::uuid IS NULL     OR created_by = $5::uuid)
+WHERE ($1::text IS NULL       OR term ILIKE '%' || $1::text || '%')
+  AND ($2::text IS NULL     OR language = $2::text)
+  AND ($3::text[] IS NULL       OR tags @> $3::text[])
+  AND ($4::uuid IS NULL   OR created_by = $4::uuid)
 `
 
 type CountWordsParams struct {
-	Search       *string
-	Language     *string
-	PartOfSpeech *string
-	Tags         []string
-	CreatedBy    pgtype.UUID
+	Search    *string
+	Language  *string
+	Tags      []string
+	CreatedBy pgtype.UUID
 }
 
 func (q *Queries) CountWords(ctx context.Context, arg CountWordsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countWords,
 		arg.Search,
 		arg.Language,
-		arg.PartOfSpeech,
 		arg.Tags,
 		arg.CreatedBy,
 	)
@@ -45,30 +40,22 @@ func (q *Queries) CountWords(ctx context.Context, arg CountWordsParams) (int64, 
 }
 
 const createWord = `-- name: CreateWord :one
-INSERT INTO words (term, language, part_of_speech, definition, example, pronunciation, tags, meta, created_by)
+INSERT INTO words (term, language, pronunciation, tags, created_by)
 VALUES (
     $1,
     $2,
-    $4::text,
-    $3,
-    $5::text,
-    $6::text,
-    $7::text[],
-    COALESCE($8::jsonb, '{}'::jsonb),
-    $9::uuid
+    $3::text,
+    $4::text[],
+    $5::uuid
 )
-RETURNING id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at, meta
+RETURNING id, term, language, pronunciation, tags, created_by, created_at, updated_at
 `
 
 type CreateWordParams struct {
 	Term          string
 	Language      string
-	Definition    string
-	PartOfSpeech  *string
-	Example       *string
 	Pronunciation *string
 	Tags          []string
-	Meta          []byte
 	CreatedBy     pgtype.UUID
 }
 
@@ -76,12 +63,8 @@ func (q *Queries) CreateWord(ctx context.Context, arg CreateWordParams) (Word, e
 	row := q.db.QueryRow(ctx, createWord,
 		arg.Term,
 		arg.Language,
-		arg.Definition,
-		arg.PartOfSpeech,
-		arg.Example,
 		arg.Pronunciation,
 		arg.Tags,
-		arg.Meta,
 		arg.CreatedBy,
 	)
 	var i Word
@@ -89,15 +72,11 @@ func (q *Queries) CreateWord(ctx context.Context, arg CreateWordParams) (Word, e
 		&i.ID,
 		&i.Term,
 		&i.Language,
-		&i.PartOfSpeech,
-		&i.Definition,
-		&i.Example,
 		&i.Pronunciation,
 		&i.Tags,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.Meta,
 	)
 	return i, err
 }
@@ -115,7 +94,7 @@ func (q *Queries) DeleteWord(ctx context.Context, id uuid.UUID) (int64, error) {
 }
 
 const getWord = `-- name: GetWord :one
-SELECT id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at, meta FROM words WHERE id = $1
+SELECT id, term, language, pronunciation, tags, created_by, created_at, updated_at FROM words WHERE id = $1
 `
 
 func (q *Queries) GetWord(ctx context.Context, id uuid.UUID) (Word, error) {
@@ -125,50 +104,36 @@ func (q *Queries) GetWord(ctx context.Context, id uuid.UUID) (Word, error) {
 		&i.ID,
 		&i.Term,
 		&i.Language,
-		&i.PartOfSpeech,
-		&i.Definition,
-		&i.Example,
 		&i.Pronunciation,
 		&i.Tags,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.Meta,
 	)
 	return i, err
 }
 
 const getWordByTerm = `-- name: GetWordByTerm :one
-SELECT id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at, meta FROM words
-WHERE language = $1
-  AND term = $2
-  AND COALESCE(part_of_speech, '') = COALESCE($3::text, '')
+SELECT id, term, language, pronunciation, tags, created_by, created_at, updated_at FROM words WHERE language = $1 AND term = $2
 `
 
 type GetWordByTermParams struct {
-	Language     string
-	Term         string
-	PartOfSpeech *string
+	Language string
+	Term     string
 }
 
-// The natural key. COALESCE mirrors the unique index so a lookup with no part
-// of speech finds the row stored without one.
 func (q *Queries) GetWordByTerm(ctx context.Context, arg GetWordByTermParams) (Word, error) {
-	row := q.db.QueryRow(ctx, getWordByTerm, arg.Language, arg.Term, arg.PartOfSpeech)
+	row := q.db.QueryRow(ctx, getWordByTerm, arg.Language, arg.Term)
 	var i Word
 	err := row.Scan(
 		&i.ID,
 		&i.Term,
 		&i.Language,
-		&i.PartOfSpeech,
-		&i.Definition,
-		&i.Example,
 		&i.Pronunciation,
 		&i.Tags,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.Meta,
 	)
 	return i, err
 }
@@ -214,43 +179,38 @@ func (q *Queries) ListWordTags(ctx context.Context, arg ListWordTagsParams) ([]L
 }
 
 const listWords = `-- name: ListWords :many
-SELECT id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at, meta FROM words
-WHERE ($1::text IS NULL
-        OR term       ILIKE '%' || $1::text || '%'
-        OR definition ILIKE '%' || $1::text || '%')
-  AND ($2::text IS NULL       OR language = $2::text)
-  AND ($3::text IS NULL OR part_of_speech = $3::text)
+SELECT id, term, language, pronunciation, tags, created_by, created_at, updated_at FROM words
+WHERE ($1::text IS NULL       OR term ILIKE '%' || $1::text || '%')
+  AND ($2::text IS NULL     OR language = $2::text)
   -- Tag filter is a containment check, so it uses the GIN index.
-  AND ($4::text[] IS NULL         OR tags @> $4::text[])
-  AND ($5::uuid IS NULL     OR created_by = $5::uuid)
+  AND ($3::text[] IS NULL       OR tags @> $3::text[])
+  AND ($4::uuid IS NULL   OR created_by = $4::uuid)
 ORDER BY
-    CASE WHEN $6::text = 'created_at' AND $7::text = 'asc'  THEN created_at END ASC,
-    CASE WHEN $6::text = 'created_at' AND $7::text = 'desc' THEN created_at END DESC,
-    CASE WHEN $6::text = 'updated_at' AND $7::text = 'asc'  THEN updated_at END ASC,
-    CASE WHEN $6::text = 'updated_at' AND $7::text = 'desc' THEN updated_at END DESC,
-    CASE WHEN $6::text = 'term'       AND $7::text = 'asc'  THEN term END ASC,
-    CASE WHEN $6::text = 'term'       AND $7::text = 'desc' THEN term END DESC,
+    CASE WHEN $5::text = 'created_at' AND $6::text = 'asc'  THEN created_at END ASC,
+    CASE WHEN $5::text = 'created_at' AND $6::text = 'desc' THEN created_at END DESC,
+    CASE WHEN $5::text = 'updated_at' AND $6::text = 'asc'  THEN updated_at END ASC,
+    CASE WHEN $5::text = 'updated_at' AND $6::text = 'desc' THEN updated_at END DESC,
+    CASE WHEN $5::text = 'term'       AND $6::text = 'asc'  THEN term END ASC,
+    CASE WHEN $5::text = 'term'       AND $6::text = 'desc' THEN term END DESC,
     id ASC
-LIMIT $9::int OFFSET $8::int
+LIMIT $8::int OFFSET $7::int
 `
 
 type ListWordsParams struct {
-	Search       *string
-	Language     *string
-	PartOfSpeech *string
-	Tags         []string
-	CreatedBy    pgtype.UUID
-	SortBy       string
-	SortOrder    string
-	PageOffset   int32
-	PageLimit    int32
+	Search     *string
+	Language   *string
+	Tags       []string
+	CreatedBy  pgtype.UUID
+	SortBy     string
+	SortOrder  string
+	PageOffset int32
+	PageLimit  int32
 }
 
 func (q *Queries) ListWords(ctx context.Context, arg ListWordsParams) ([]Word, error) {
 	rows, err := q.db.Query(ctx, listWords,
 		arg.Search,
 		arg.Language,
-		arg.PartOfSpeech,
 		arg.Tags,
 		arg.CreatedBy,
 		arg.SortBy,
@@ -269,15 +229,11 @@ func (q *Queries) ListWords(ctx context.Context, arg ListWordsParams) ([]Word, e
 			&i.ID,
 			&i.Term,
 			&i.Language,
-			&i.PartOfSpeech,
-			&i.Definition,
-			&i.Example,
 			&i.Pronunciation,
 			&i.Tags,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.Meta,
 		); err != nil {
 			return nil, err
 		}
@@ -291,33 +247,21 @@ func (q *Queries) ListWords(ctx context.Context, arg ListWordsParams) ([]Word, e
 
 const updateWord = `-- name: UpdateWord :one
 UPDATE words
-SET term           = COALESCE($1::citext, term),
-    language       = COALESCE($2::text, language),
-    part_of_speech = CASE WHEN $3::bool THEN NULL
-                          ELSE COALESCE($4::text, part_of_speech) END,
-    definition     = COALESCE($5::text, definition),
-    example        = CASE WHEN $6::bool THEN NULL
-                          ELSE COALESCE($7::text, example) END,
-    pronunciation  = CASE WHEN $8::bool THEN NULL
-                          ELSE COALESCE($9::text, pronunciation) END,
-    tags           = COALESCE($10::text[], tags),
-    meta           = COALESCE($11::jsonb, meta)
-WHERE id = $12::uuid
-RETURNING id, term, language, part_of_speech, definition, example, pronunciation, tags, created_by, created_at, updated_at, meta
+SET term          = COALESCE($1::citext, term),
+    language      = COALESCE($2::text, language),
+    pronunciation = CASE WHEN $3::bool THEN NULL
+                        ELSE COALESCE($4::text, pronunciation) END,
+    tags          = COALESCE($5::text[], tags)
+WHERE id = $6::uuid
+RETURNING id, term, language, pronunciation, tags, created_by, created_at, updated_at
 `
 
 type UpdateWordParams struct {
 	Term               pgtype.Text
 	Language           *string
-	ClearPartOfSpeech  bool
-	PartOfSpeech       *string
-	Definition         *string
-	ClearExample       bool
-	Example            *string
 	ClearPronunciation bool
 	Pronunciation      *string
 	Tags               []string
-	Meta               []byte
 	ID                 uuid.UUID
 }
 
@@ -327,15 +271,9 @@ func (q *Queries) UpdateWord(ctx context.Context, arg UpdateWordParams) (Word, e
 	row := q.db.QueryRow(ctx, updateWord,
 		arg.Term,
 		arg.Language,
-		arg.ClearPartOfSpeech,
-		arg.PartOfSpeech,
-		arg.Definition,
-		arg.ClearExample,
-		arg.Example,
 		arg.ClearPronunciation,
 		arg.Pronunciation,
 		arg.Tags,
-		arg.Meta,
 		arg.ID,
 	)
 	var i Word
@@ -343,15 +281,11 @@ func (q *Queries) UpdateWord(ctx context.Context, arg UpdateWordParams) (Word, e
 		&i.ID,
 		&i.Term,
 		&i.Language,
-		&i.PartOfSpeech,
-		&i.Definition,
-		&i.Example,
 		&i.Pronunciation,
 		&i.Tags,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.Meta,
 	)
 	return i, err
 }

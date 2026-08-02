@@ -72,9 +72,6 @@ SELECT
     uw.updated_at,
     w.term           AS word_term,
     w.language       AS word_language,
-    w.part_of_speech AS word_part_of_speech,
-    w.definition     AS word_definition,
-    w.example        AS word_example,
     w.pronunciation  AS word_pronunciation,
     w.tags           AS word_tags,
     w.created_by     AS word_created_by,
@@ -83,9 +80,9 @@ SELECT
 FROM user_words uw
 JOIN words w ON w.id = uw.word_id
 WHERE uw.user_id = sqlc.arg('user_id')::uuid
+  -- Definitions live on word_senses now; this only matches the term itself.
   AND (sqlc.narg('search')::text IS NULL
-        OR w.term       ILIKE '%' || sqlc.narg('search')::text || '%'
-        OR w.definition ILIKE '%' || sqlc.narg('search')::text || '%')
+        OR w.term ILIKE '%' || sqlc.narg('search')::text || '%')
   AND (sqlc.narg('status')::text IS NULL       OR uw.status = sqlc.narg('status')::text)
   AND (sqlc.narg('language')::text IS NULL     OR w.language = sqlc.narg('language')::text)
   AND (sqlc.narg('tags')::text[] IS NULL       OR w.tags @> sqlc.narg('tags')::text[])
@@ -108,8 +105,7 @@ FROM user_words uw
 JOIN words w ON w.id = uw.word_id
 WHERE uw.user_id = sqlc.arg('user_id')::uuid
   AND (sqlc.narg('search')::text IS NULL
-        OR w.term       ILIKE '%' || sqlc.narg('search')::text || '%'
-        OR w.definition ILIKE '%' || sqlc.narg('search')::text || '%')
+        OR w.term ILIKE '%' || sqlc.narg('search')::text || '%')
   AND (sqlc.narg('status')::text IS NULL       OR uw.status = sqlc.narg('status')::text)
   AND (sqlc.narg('language')::text IS NULL     OR w.language = sqlc.narg('language')::text)
   AND (sqlc.narg('tags')::text[] IS NULL       OR w.tags @> sqlc.narg('tags')::text[])

@@ -29,6 +29,7 @@ type Config struct {
 	Redis   Redis
 	Auth    Auth
 	Google  Google
+	OpenAI  OpenAI
 	CORS    CORS
 	Limiter RateLimit
 	Storage Storage
@@ -95,6 +96,19 @@ type Google struct {
 func (g Google) Enabled() bool {
 	return g.ClientID != "" && g.ClientSecret != "" && g.RedirectURL != ""
 }
+
+// OpenAI configures word enrichment (definitions, senses, synonyms,
+// antonyms). Word creation runs without it disabled, same pattern as Google
+// sign-in: the feature is only offered when configured.
+type OpenAI struct {
+	APIKey  string
+	Model   string
+	BaseURL string
+	Timeout time.Duration
+}
+
+// Enabled reports whether word enrichment can be offered.
+func (o OpenAI) Enabled() bool { return o.APIKey != "" }
 
 type CORS struct {
 	AllowedOrigins   []string
@@ -188,6 +202,12 @@ func Load() (*Config, error) {
 			ClientID:     getString("GOOGLE_CLIENT_ID", ""),
 			ClientSecret: getString("GOOGLE_CLIENT_SECRET", ""),
 			RedirectURL:  getString("GOOGLE_REDIRECT_URL", ""),
+		},
+		OpenAI: OpenAI{
+			APIKey:  getString("OPENAI_API_KEY", ""),
+			Model:   getString("OPENAI_MODEL", "gpt-4o-mini"),
+			BaseURL: strings.TrimRight(getString("OPENAI_BASE_URL", "https://api.openai.com/v1"), "/"),
+			Timeout: getDuration("OPENAI_TIMEOUT", 20*time.Second),
 		},
 		CORS: CORS{
 			AllowedOrigins:   getStringSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173"}),

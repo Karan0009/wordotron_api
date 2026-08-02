@@ -34,6 +34,7 @@ type Dependencies struct {
 	Users  *handlers.UserHandler
 	Health *handlers.HealthHandler
 	Files  *handlers.FileHandler
+	Words  *handlers.WordHandler
 }
 
 // RegisterRoutes mounts every route on app.
@@ -97,6 +98,12 @@ func RegisterRoutes(app *fiber.App, deps Dependencies) {
 	users.Get("/:id", deps.Users.Get)
 	users.Patch("/:id", deps.Users.Update)
 	users.Delete("/:id", deps.Users.Delete)
+
+	// ---- Words ----
+	words := v1.Group("/words", authenticated)
+	words.Get("/", deps.Words.List)
+	words.Post("/", deps.Words.Create)
+	words.Get("/:id", deps.Words.Get)
 }
 
 // docsPage renders Swagger UI against the served specification.

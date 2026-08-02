@@ -72,13 +72,21 @@ type Word struct {
 	ID            uuid.UUID
 	Term          string
 	Language      string
-	PartOfSpeech  *string
-	Definition    string
-	Example       *string
 	Pronunciation *string
 	Tags          []string
 	CreatedBy     pgtype.UUID
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
-	Meta          []byte
+}
+
+type WordSense struct {
+	ID           uuid.UUID
+	WordID       uuid.UUID
+	PartOfSpeech *string
+	Definition   string
+	Example      *string
+	Meta         []byte
+	SenseOrder   int16
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
