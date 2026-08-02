@@ -21,48 +21,71 @@ make test-integration   # testcontainers end-to-end tests (needs Docker daemon)
 make test-cover         # unit tests + coverage.html
 make lint               # golangci-lint
 make fmt vet            # gofmt + go vet
-make sqlc               # regenerate internal/repository/db from sql/queries
+make sqlc               # regenerate app/repository/db from sql/queries
 make migrate            # apply pending migrations
 make migrate-down       # roll back most recent migration
 make migrate-create NAME=add_widgets   # scaffold a migration pair
 make seed               # insert dev seed data (admin@example.com / user@example.com)
-make docker-up          # full stack via docker compose (api + postgres + redis + migrations)
+make docker-up          # full stack via docker/podman compose (api + postgres + redis + migrations)
 ```
 
-Single test: `go test -race -run TestName ./internal/handlers/...` (swap the
+Single test: `go test -race -run TestName ./app/handlers/...` (swap the
 package path). Integration tests live under `./tests/...` and require
 `-tags=integration`.
 
+Hot reload: `docker-compose.override.yml` builds the `dev` target in the
+Dockerfile (Air) and bind-mounts the repo into the container — `make
+docker-up` picks it up automatically. `DOCKER_COMPOSE` in the Makefile
+defaults to `podman compose`; override with `DOCKER_COMPOSE="docker compose"`
+if using Docker instead.
+
 ## Architecture
 
-Dependencies point inward. Transport knows about services; services know about
-repository interfaces; nothing in the core knows about HTTP.
+Dependencies point inward. Transport knows about services; services know
+about repository interfaces; nothing in the core knows about HTTP. Entry
+point is `cmd/app_main.go` (package `main`); everything else lives under
+`app/` with no `internal/` wrapper.
 
 ```
-routes → middleware → handlers        transport
-service (business rules, authz)       use cases
-repository (interfaces) → sqlc        persistence
-models · auth · storage · mailer · config   domain + ports
+server → routes → middleware → handlers   transport
+services (business rules, authz)       use cases
+repository (interfaces) → sqlc         persistence
+models · lib/auth · lib/storage · config   domain + ports
 ```
 
-- `internal/handlers/` — HTTP handlers + DTOs. No SQL, no business rules.
-- `internal/service/` — business logic and **authorization** (not middleware —
+- `app/handlers/` — HTTP handlers. No SQL, no business rules. Request/response
+  shapes live in `app/serializers/`, not here.
+- `app/serializers/` — request and response DTOs (validation tags, JSON
+  shaping, `To*Response` mapping functions). Split by domain (`auth.go`,
+  `user.go`), one `serializers` package.
+- `app/services/` — business logic and **authorization** (not middleware —
   middleware only answers "who is this?"; authz decisions live here so the
   same rules apply if a use case is later called from a worker or gRPC).
-- `internal/repository/` — repository interfaces plus sqlc-backed
-  implementations. `internal/repository/db/` is sqlc-generated; never edit by
-  hand, run `make sqlc` after changing `sql/queries/*.sql`.
-- `internal/auth/` — bcrypt, JWT, Redis session store.
-- `internal/storage/` — object storage port with local / S3 / MinIO
-  implementations selected by `STORAGE_PROVIDER`.
-- `internal/middleware/` — request ID, logging, auth, rate limit, error
-  rendering.
-- `pkg/apperror/` — typed errors (code, HTTP status, client-safe message,
-  optional field errors). Handlers return them; one `ErrorHandler` renders
-  them. Internal causes are logged, never serialized to the client.
-- `pkg/logger/` — slog setup and context propagation.
+- `app/repository/` — repository interfaces plus sqlc-backed implementations.
+  `app/repository/db/` is sqlc-generated; never edit by hand, run `make sqlc`
+  after changing `sql/queries/*.sql`.
+- `app/middleware/` — request ID, logging, auth, rate limit, error rendering.
+- `app/routes/` — `Dependencies` struct (the DI surface) and `RegisterRoutes`,
+  the route table.
+- `app/server/` — `NewApp` builds the Fiber instance and middleware stack,
+  then calls `routes.RegisterRoutes`. Split so route registration doesn't
+  depend on app construction; `server` imports `routes`, never the reverse.
+- `app/lib/` — cross-cutting infra, all under one `lib` package at the top
+  level (`wordotronDb.go` for the pgx pool, `redis.go`, `utils.go` for the
+  response envelope/pagination, `errors.go` for typed errors, `logger.go` for
+  slog setup), plus subpackages for things too large to be flat files:
+  `app/lib/auth/` (bcrypt, JWT, Redis session store, Google OAuth),
+  `app/lib/storage/` (local/S3/MinIO port), `app/lib/validation/` (validator
+  wiring).
+  - Note the naming: `lib.NewError` builds an `*Error` (not `lib.New` —
+    that name is taken by the logger constructor, `lib.New(lib.Config{...})
+    *slog.Logger`). Both live in the same package, hence the split names.
 - Every collaborator is an interface passed through a constructor — no global
   mutable state, no service locator, so any layer can be faked in tests.
+
+There is no mailer/email port. `AuthService.ForgotPassword` logs the reset
+link at debug level (`app/services/auth.go`) instead of sending it — wire up
+real delivery before relying on password reset in production.
 
 ### Key design decisions (see README "Design decisions" for full rationale)
 
@@ -84,7 +107,7 @@ models · auth · storage · mailer · config   domain + ports
 - Rate limiting fails open on Redis outage rather than taking down the API.
 - Config is validated at startup (weak secrets, wildcard CORS in production,
   unreachable dependencies stop the process immediately with a readable
-  error) — see `.env.example` and `internal/config/config.go`.
+  error) — see `.env.example` and `app/config/config.go`.
 
 ### Response envelope
 
@@ -96,15 +119,12 @@ request.
 
 ## Database
 
-SQL lives in `sql/queries/*.sql`; sqlc compiles it into
-`internal/repository/db/` (generated, do not edit). Handlers never contain
-SQL and the query layer is never bypassed. After editing queries or adding a
-migration, run `make sqlc`. `scripts/check-queries.py` exists for query
-sanity checks.
+SQL lives in `sql/queries/*.sql`; sqlc compiles it into `app/repository/db/`
+(generated, do not edit). Handlers never contain SQL and the query layer is
+never bypassed. After editing queries or adding a migration, run `make sqlc`.
+`scripts/check-queries.py` exists for query sanity checks.
 
 ## Linting
 
 `golangci-lint` config is in `.golangci.yml` (v2). Generated code under
-`internal/repository/db/` is excluded from most linters. Local import prefix
-is `github.com/Karan0009/wordotron_api` (update in `.golangci.yml` if the module path
-changes).
+`app/repository/db/` is excluded from most linters.

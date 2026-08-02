@@ -1,19 +1,22 @@
 # ---------------------------------------------------------------------------
-# Backend API - developer task runner
+# Backend API - host-only task runner (no Docker/Podman)
+#
+# Assumes Postgres and Redis are installed and running natively on this
+# machine (e.g. `brew install postgresql redis`), and DATABASE_URL/REDIS_URL
+# in .env point at localhost. Use: make -f Makefile.local <target>
 # ---------------------------------------------------------------------------
 SHELL          := /bin/bash
 APP_NAME       ?= backend-api
 BIN_DIR        ?= bin
 MAIN_PKG       ?= ./cmd
 MIGRATIONS_DIR ?= migrations
-DOCKER_COMPOSE ?= podman compose
 
-# Read DATABASE_URL from .env when present, otherwise fall back to the local default.
 ifneq (,$(wildcard ./.env))
 include .env
 export
 endif
 DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/appdb?sslmode=disable
+REDIS_URL    ?= redis://localhost:6379/0
 
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -21,8 +24,7 @@ LDFLAGS    := -s -w -X main.version=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME
 
 .DEFAULT_GOAL := help
 .PHONY: help run build test test-integration test-cover lint fmt vet tidy sqlc \
-        migrate migrate-down migrate-force migrate-create docker docker-up docker-down \
-        docker-logs seed hooks clean
+        migrate migrate-down migrate-force migrate-create seed hooks clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -31,7 +33,7 @@ help: ## Show this help
 ## --------------------------------------------------------------------------
 ## Development
 ## --------------------------------------------------------------------------
-run: ## Run the API locally (requires postgres + redis reachable)
+run: ## Run the API (requires postgres + redis already running and reachable at DATABASE_URL/REDIS_URL)
 	go run $(MAIN_PKG)
 
 build: ## Compile a static binary into ./bin
@@ -56,6 +58,9 @@ lint: ## Run golangci-lint
 test: ## Unit tests (fast, no external dependencies)
 	go test -race -count=1 ./...
 
+# NOTE: this is the one target that still needs a container runtime -
+# testcontainers-go spins up disposable Postgres/Redis containers itself,
+# regardless of how the app runs day to day. Needs Docker or Podman installed.
 test-integration: ## Integration tests (spins up containers via testcontainers)
 	go test -race -count=1 -tags=integration -timeout=10m ./tests/...
 
@@ -76,29 +81,14 @@ migrate: ## Apply all pending migrations
 migrate-down: ## Roll back the most recent migration
 	migrate -path $(MIGRATIONS_DIR) -database "$(DATABASE_URL)" down 1
 
-migrate-force: ## Clear a dirty migration state: make migrate-force VERSION=1
+migrate-force: ## Clear a dirty migration state: make -f Makefile.local migrate-force VERSION=1
 	migrate -path $(MIGRATIONS_DIR) -database "$(DATABASE_URL)" force $(VERSION)
 
-migrate-create: ## Scaffold a migration pair: make migrate-create NAME=add_widgets
+migrate-create: ## Scaffold a migration pair: make -f Makefile.local migrate-create NAME=add_widgets
 	migrate create -ext sql -dir $(MIGRATIONS_DIR) -seq $(NAME)
 
 seed: ## Insert the development seed data (admin + demo user)
 	psql "$(DATABASE_URL)" -f scripts/seed.sql
-
-## --------------------------------------------------------------------------
-## Docker
-## --------------------------------------------------------------------------
-docker: ## Build the production image
-	docker build -t $(APP_NAME):$(GIT_COMMIT) -t $(APP_NAME):latest .
-
-docker-up: ## Start the full stack (api + postgres + redis + migrations)
-	$(DOCKER_COMPOSE) up --build -d
-
-docker-down: ## Stop the stack and remove volumes
-	$(DOCKER_COMPOSE) down -v
-
-docker-logs: ## Tail the API logs
-	$(DOCKER_COMPOSE) logs -f api
 
 ## --------------------------------------------------------------------------
 ## Misc

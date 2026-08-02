@@ -26,17 +26,16 @@ import (
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/Karan0009/wordotron_api/internal/auth"
-	"github.com/Karan0009/wordotron_api/internal/config"
-	"github.com/Karan0009/wordotron_api/internal/database"
-	"github.com/Karan0009/wordotron_api/internal/handlers"
-	"github.com/Karan0009/wordotron_api/internal/mailer"
-	"github.com/Karan0009/wordotron_api/internal/repository"
-	"github.com/Karan0009/wordotron_api/internal/routes"
-	"github.com/Karan0009/wordotron_api/internal/service"
-	"github.com/Karan0009/wordotron_api/internal/storage"
-	"github.com/Karan0009/wordotron_api/internal/validation"
-	"github.com/Karan0009/wordotron_api/pkg/logger"
+	"github.com/Karan0009/wordotron_api/app/config"
+	"github.com/Karan0009/wordotron_api/app/handlers"
+	"github.com/Karan0009/wordotron_api/app/lib"
+	"github.com/Karan0009/wordotron_api/app/lib/auth"
+	"github.com/Karan0009/wordotron_api/app/lib/storage"
+	"github.com/Karan0009/wordotron_api/app/lib/validation"
+	"github.com/Karan0009/wordotron_api/app/repository"
+	"github.com/Karan0009/wordotron_api/app/routes"
+	"github.com/Karan0009/wordotron_api/app/server"
+	"github.com/Karan0009/wordotron_api/app/services"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -48,8 +47,9 @@ const (
 
 // testEnv holds everything a test needs to talk to the API.
 type testEnv struct {
-	app *fiber.App
-	cfg *config.Config
+	app   *fiber.App
+	cfg   *config.Config
+	store repository.Store
 }
 
 // newTestEnv starts the containers, migrates the schema and wires the real
@@ -123,9 +123,9 @@ func newTestEnv(t *testing.T) *testEnv {
 		},
 	}
 
-	log := logger.New(logger.Config{Level: "error", Format: "text", Output: io.Discard})
+	log := lib.New(lib.Config{Level: "error", Format: "text", Output: io.Discard})
 
-	pool, err := database.NewPostgres(ctx, config.Database{
+	pool, err := lib.NewPostgres(ctx, config.Database{
 		URL:      databaseURL,
 		MaxConns: 5,
 		MinConns: 1,
@@ -133,7 +133,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
-	redisClient, err := database.NewRedis(ctx, config.Redis{URL: redisURL}, log)
+	redisClient, err := lib.NewRedis(ctx, config.Redis{URL: redisURL}, log)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = redisClient.Close() })
 
@@ -149,12 +149,11 @@ func newTestEnv(t *testing.T) *testEnv {
 	tokens := auth.NewJWTManager(cfg.Auth)
 	sessions := auth.NewRedisSessionStore(redisClient, cfg.Auth.RefreshExpiry)
 	store := repository.NewStore(pool)
-	mail := mailer.NewLogMailer(log)
 
-	authService := service.NewAuthService(store, hasher, tokens, sessions, mail, cfg, log)
-	userService := service.NewUserService(store, hasher, sessions, files, cfg, log)
+	authService := services.NewAuthService(store, hasher, tokens, sessions, cfg, log)
+	userService := services.NewUserService(store, hasher, sessions, files, cfg, log)
 
-	app := routes.NewApp(routes.Dependencies{
+	app := server.NewApp(routes.Dependencies{
 		Config:   cfg,
 		Logger:   log,
 		Redis:    redisClient,
@@ -166,7 +165,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		Files:    handlers.NewFileHandler(files),
 	})
 
-	return &testEnv{app: app, cfg: cfg}
+	return &testEnv{app: app, cfg: cfg, store: store}
 }
 
 func runMigrations(t *testing.T, databaseURL string) {
@@ -252,6 +251,30 @@ func (e *testEnv) register(t *testing.T, email string) apiResponse {
 		fmt.Sprintf(`{"email":%q,"password":%q,"full_name":"Test User"}`, email, testPassword), "")
 }
 
+// verify marks email as verified directly via the repository, bypassing the
+// email link: the plaintext verification token never reaches a black-box
+// HTTP test, only its hash does.
+func (e *testEnv) verify(t *testing.T, email string) {
+	t.Helper()
+
+	user, err := e.store.Users().GetByEmail(context.Background(), email)
+	require.NoError(t, err)
+	require.NoError(t, e.store.Users().MarkEmailVerified(context.Background(), user.ID))
+}
+
+// registerAndLogin registers, verifies and logs in, returning the login
+// response so tokensFrom works exactly as it did before verification was
+// required.
+func (e *testEnv) registerAndLogin(t *testing.T, email string) apiResponse {
+	t.Helper()
+
+	require.Equal(t, fiber.StatusCreated, e.register(t, email).status)
+	e.verify(t, email)
+
+	return e.do(t, fiber.MethodPost, "/api/v1/auth/login",
+		fmt.Sprintf(`{"email":%q,"password":%q}`, email, testPassword), "")
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -275,10 +298,14 @@ func TestRegisterLoginAndFetchProfile(t *testing.T) {
 	registered := env.register(t, email)
 	require.Equal(t, fiber.StatusCreated, registered.status)
 	require.Equal(t, true, registered.body["success"])
+	// Register no longer starts a session: the account can't log in yet.
+	require.NotContains(t, registered.body["data"], "tokens")
 
 	// Registering the same address twice is a conflict, not a 500.
 	duplicate := env.register(t, email)
 	require.Equal(t, fiber.StatusConflict, duplicate.status)
+
+	env.verify(t, email)
 
 	loggedIn := env.do(t, fiber.MethodPost, "/api/v1/auth/login",
 		fmt.Sprintf(`{"email":%q,"password":%q}`, email, testPassword), "")
@@ -324,8 +351,8 @@ func TestRefreshRotatesAndInvalidatesOldToken(t *testing.T) {
 	env := newTestEnv(t)
 	email := uniqueEmail("refresh")
 
-	registered := env.register(t, email)
-	_, refreshToken := tokensFrom(t, registered)
+	loggedIn := env.registerAndLogin(t, email)
+	_, refreshToken := tokensFrom(t, loggedIn)
 
 	rotated := env.do(t, fiber.MethodPost, "/api/v1/auth/refresh",
 		fmt.Sprintf(`{"refresh_token":%q}`, refreshToken), "")
@@ -353,8 +380,8 @@ func TestLogoutBlacklistsAccessToken(t *testing.T) {
 	env := newTestEnv(t)
 	email := uniqueEmail("logout")
 
-	registered := env.register(t, email)
-	accessToken, refreshToken := tokensFrom(t, registered)
+	loggedIn := env.registerAndLogin(t, email)
+	accessToken, refreshToken := tokensFrom(t, loggedIn)
 
 	require.Equal(t, fiber.StatusOK,
 		env.do(t, fiber.MethodGet, "/api/v1/users/me", "", accessToken).status)
@@ -375,8 +402,8 @@ func TestChangePasswordIssuesNewSession(t *testing.T) {
 	env := newTestEnv(t)
 	email := uniqueEmail("changepw")
 
-	registered := env.register(t, email)
-	accessToken, _ := tokensFrom(t, registered)
+	loggedIn := env.registerAndLogin(t, email)
+	accessToken, _ := tokensFrom(t, loggedIn)
 
 	const newPassword = "EvenB3tterPassword"
 
@@ -401,8 +428,8 @@ func TestChangePasswordIssuesNewSession(t *testing.T) {
 func TestNonAdminCannotListUsers(t *testing.T) {
 	env := newTestEnv(t)
 
-	registered := env.register(t, uniqueEmail("listdenied"))
-	accessToken, _ := tokensFrom(t, registered)
+	loggedIn := env.registerAndLogin(t, uniqueEmail("listdenied"))
+	accessToken, _ := tokensFrom(t, loggedIn)
 
 	resp := env.do(t, fiber.MethodGet, "/api/v1/users?page=1&limit=10", "", accessToken)
 	require.Equal(t, fiber.StatusForbidden, resp.status)
@@ -422,6 +449,25 @@ func TestForgotPasswordDoesNotRevealAccounts(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, forKnown.status)
 	require.Equal(t, fiber.StatusOK, forUnknown.status)
 	require.Equal(t, forKnown.body["data"], forUnknown.body["data"])
+}
+
+func TestLoginBlockedUntilEmailVerified(t *testing.T) {
+	env := newTestEnv(t)
+	email := uniqueEmail("unverified")
+
+	require.Equal(t, fiber.StatusCreated, env.register(t, email).status)
+
+	resp := env.do(t, fiber.MethodPost, "/api/v1/auth/login",
+		fmt.Sprintf(`{"email":%q,"password":%q}`, email, testPassword), "")
+
+	require.Equal(t, fiber.StatusForbidden, resp.status)
+	require.Equal(t, false, resp.body["success"])
+
+	env.verify(t, email)
+
+	afterVerify := env.do(t, fiber.MethodPost, "/api/v1/auth/login",
+		fmt.Sprintf(`{"email":%q,"password":%q}`, email, testPassword), "")
+	require.Equal(t, fiber.StatusOK, afterVerify.status)
 }
 
 func TestValidationRejectsWeakPassword(t *testing.T) {

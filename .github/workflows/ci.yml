@@ -32,7 +32,7 @@ jobs:
 
       - name: gofmt
         run: |
-          unformatted="$(gofmt -l . | grep -v '^internal/repository/db/' || true)"
+          unformatted="$(gofmt -l . | grep -v '^app/repository/db/' || true)"
           if [ -n "$unformatted" ]; then
             echo "::error::gofmt required for:"; echo "$unformatted"; exit 1
           fi
@@ -91,7 +91,7 @@ jobs:
           cache: true
 
       - name: Build binary
-        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/api ./cmd/api
+        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/api ./cmd
 
       - name: Build Docker image
         run: docker build -t backend-api:${{ github.sha }} .

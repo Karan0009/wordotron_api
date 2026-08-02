@@ -77,43 +77,46 @@ Dependencies point inwards. The transport layer knows about services, services
 know about repository interfaces, and nothing in the core knows about HTTP.
 
 ```
-        ┌──────────────────────────────────────────────┐
-HTTP →  │ routes  →  middleware  →  handlers           │  transport
-        ├──────────────────────────────────────────────┤
-        │ service            (business rules, authz)   │  use cases
-        ├──────────────────────────────────────────────┤
-        │ repository (interfaces)  →  sqlc queries     │  persistence
-        ├──────────────────────────────────────────────┤
-        │ models · auth · storage · mailer · config    │  domain + ports
-        └──────────────────────────────────────────────┘
+        ┌────────────────────────────────────────────────────────┐
+HTTP →  │ server → routes → middleware → handlers                │  transport
+        ├────────────────────────────────────────────────────────┤
+        │ services                       (business rules, authz) │  use cases
+        ├────────────────────────────────────────────────────────┤
+        │ repository (interfaces)  →  sqlc queries                │  persistence
+        ├────────────────────────────────────────────────────────┤
+        │ models · lib/auth · lib/storage · config                │  domain + ports
+        └────────────────────────────────────────────────────────┘
 ```
 
 ```
 backend/
-├── cmd/api/                  entry point: config, wiring, graceful shutdown
-├── internal/
-│   ├── auth/                 bcrypt, JWT, Redis session store
-│   ├── config/               env loading and validation
-│   ├── database/             pgx pool, redis client, transaction helper
-│   ├── handlers/             HTTP handlers and DTOs
-│   ├── mailer/               outbound email port (logging implementation)
-│   ├── middleware/           request ID, logging, auth, rate limit, errors
-│   ├── models/               domain types
-│   ├── repository/           repository interfaces + sqlc-backed implementations
-│   │   └── db/               generated code (do not edit)
-│   ├── routes/               app construction and route table
-│   ├── service/              business logic
-│   ├── storage/              object storage: local | S3 | MinIO
-│   ├── utils/                response envelope, pagination parsing
-│   └── validation/           validator wiring and error translation
-├── pkg/
-│   ├── apperror/             typed errors with HTTP mapping
-│   └── logger/               slog setup and context propagation
-├── migrations/               golang-migrate SQL files
-├── sql/queries/              sqlc source queries
-├── docs/openapi.yaml         API specification
-├── scripts/                  seed data, dev helper
-└── tests/integration/        testcontainers end-to-end tests
+├── cmd/
+│   └── app_main.go            entry point: config, wiring, graceful shutdown
+├── app/
+│   ├── config/                env loading and validation
+│   ├── handlers/               HTTP handlers
+│   ├── serializers/           request/response DTOs
+│   ├── services/              business logic
+│   ├── models/                domain types
+│   ├── repository/            repository interfaces + sqlc-backed implementations
+│   │   └── db/                 generated code (do not edit)
+│   ├── middleware/            request ID, logging, auth, rate limit, errors
+│   ├── routes/                route table (Dependencies + RegisterRoutes)
+│   ├── server/                Fiber app construction + middleware stack
+│   └── lib/                   cross-cutting infra
+│       ├── wordotronDb.go      pgx pool + transaction helper
+│       ├── redis.go            redis client
+│       ├── utils.go            response envelope, pagination parsing
+│       ├── errors.go           typed errors with HTTP mapping
+│       ├── logger.go           slog setup and context propagation
+│       ├── auth/               bcrypt, JWT, Redis session store
+│       ├── storage/            object storage: local | S3 | MinIO
+│       └── validation/         validator wiring and error translation
+├── migrations/                golang-migrate SQL files
+├── sql/queries/                sqlc source queries
+├── docs/openapi.yaml           API specification
+├── scripts/                    seed data, dev helper
+└── tests/integration/          testcontainers end-to-end tests
 ```
 
 Every collaborator is an interface passed through a constructor. There is no
@@ -161,7 +164,8 @@ Base path `/api/v1`. Full specification at `/docs` (Swagger UI) or
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `POST` | `/auth/register` | — | Create an account and start a session |
+| `POST` | `/auth/register` | — | Create an account and email a verification link |
+| `POST` | `/auth/verify-email` | — | Consume a verification token, unblocks login |
 | `POST` | `/auth/login` | — | Exchange credentials for tokens |
 | `POST` | `/auth/refresh` | — | Rotate the refresh token |
 | `POST` | `/auth/logout` | bearer | Revoke the current session |
@@ -260,8 +264,8 @@ err := store.WithTx(ctx, func(tx repository.Store) error {
 
 | Layer | Location | Dependencies |
 | --- | --- | --- |
-| Unit | `internal/**/*_test.go` | None |
-| Handler | `internal/handlers/*_test.go` | `httptest` + service stubs |
+| Unit | `app/**/*_test.go` | None |
+| Handler | `app/handlers/*_test.go` | `httptest` + service stubs |
 | Integration | `tests/integration/` | Docker (testcontainers) |
 
 Integration tests start real Postgres and Redis containers, run the migrations
@@ -304,7 +308,7 @@ Docker build.
       limiter buckets everyone into a single IP)
 - [ ] `STORAGE_PROVIDER=s3` for more than one replica
 - [ ] TLS terminated in front of the service; `COOKIE_SECURE=true`
-- [ ] A real `Mailer` implementation registered in `cmd/api/main.go`
+- [ ] Password-reset links are only logged (`app/services/auth.go`), not emailed — wire up real delivery before relying on this in production
 - [ ] Database backups and connection-pool sizing reviewed against `DB_MAX_CONNS`
 
 ---
@@ -340,6 +344,14 @@ or inject SQL through `?sort=`.
 **Account enumeration is treated as a bug.** Login returns one message and one
 timing profile for unknown addresses and wrong passwords, and
 `/auth/forgot-password` always returns the same 200.
+
+**Registration requires email verification.** `/auth/register` creates the
+account and sends (logs, until a mailer is wired up) a single-use verification
+link; no session is issued. `/auth/login` rejects the account until
+`/auth/verify-email` consumes that link. Verification tokens follow the same
+scheme as password-reset tokens (random 256-bit value, SHA-256 hash stored,
+single use, expiring) rather than a JWT — a real refresh token is a live login
+credential, so it's the wrong thing to put in an email.
 
 **The storage provider is a port.** `storage.Storage` has three
 implementations' worth of surface behind one interface; switching from local

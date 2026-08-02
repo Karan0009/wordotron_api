@@ -44,7 +44,7 @@ linters:
     generated: lax
     rules:
       # sqlc-generated code is not ours to lint.
-      - path: internal/repository/db/
+      - path: app/repository/db/
         linters: [revive, gocritic, unused, stylecheck]
       - path: _test\.go
         linters: [gosec, errcheck, noctx]

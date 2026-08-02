@@ -26,6 +26,9 @@ UPDATE users SET password_hash = $2 WHERE id = $1;
 -- name: UpdateLastLogin :exec
 UPDATE users SET last_login_at = NOW() WHERE id = $1;
 
+-- name: MarkUserEmailVerified :exec
+UPDATE users SET email_verified_at = NOW() WHERE id = $1;
+
 -- name: DeleteUser :execrows
 DELETE FROM users WHERE id = $1;
 

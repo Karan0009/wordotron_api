@@ -28,7 +28,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux go build \
         -trimpath \
         -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
-        -o /out/api ./cmd/api
+        -o /out/api ./cmd
 
 # ---------------------------------------------------------------------------
 # Stage 2 - hot-reload development image (docker-compose.override.yml only)
