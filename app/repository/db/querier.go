@@ -55,6 +55,9 @@ type Querier interface {
 	ListUserWords(ctx context.Context, arg ListUserWordsParams) ([]ListUserWordsRow, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	ListWordSensesByWord(ctx context.Context, wordID uuid.UUID) ([]WordSense, error)
+	// Powers word listing: one query for every sense of every word on the page,
+	// instead of one round trip per word.
+	ListWordSensesByWordIDs(ctx context.Context, wordIds []uuid.UUID) ([]WordSense, error)
 	// Distinct tags with usage counts, for filter menus and autocomplete.
 	ListWordTags(ctx context.Context, arg ListWordTagsParams) ([]ListWordTagsRow, error)
 	ListWords(ctx context.Context, arg ListWordsParams) ([]Word, error)

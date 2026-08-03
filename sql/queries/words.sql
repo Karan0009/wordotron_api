@@ -37,7 +37,12 @@ WHERE (sqlc.narg('search')::text IS NULL       OR term ILIKE '%' || sqlc.narg('s
   -- Tag filter is a containment check, so it uses the GIN index.
   AND (sqlc.narg('tags')::text[] IS NULL       OR tags @> sqlc.narg('tags')::text[])
   AND (sqlc.narg('created_by')::uuid IS NULL   OR created_by = sqlc.narg('created_by')::uuid)
+-- sort_by = 'random' orders by a fresh random() draw per row. Note this is
+-- unstable across pages: LIMIT/OFFSET with random ordering can repeat or
+-- skip rows between page 1 and page 2, since each query re-randomizes.
+-- Fine for "surprise me" browsing, not for a stable paginated listing.
 ORDER BY
+    CASE WHEN sqlc.arg('sort_by')::text = 'random' THEN random() END,
     CASE WHEN sqlc.arg('sort_by')::text = 'created_at' AND sqlc.arg('sort_order')::text = 'asc'  THEN created_at END ASC,
     CASE WHEN sqlc.arg('sort_by')::text = 'created_at' AND sqlc.arg('sort_order')::text = 'desc' THEN created_at END DESC,
     CASE WHEN sqlc.arg('sort_by')::text = 'updated_at' AND sqlc.arg('sort_order')::text = 'asc'  THEN updated_at END ASC,

@@ -2,6 +2,7 @@ package dictionary
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/Karan0009/wordotron_api/app/config"
 	"github.com/Karan0009/wordotron_api/app/lib/openai"
@@ -25,8 +26,8 @@ var _ Enricher = (*OpenAIEnricher)(nil)
 // NewOpenAIEnricher builds an Enricher backed by OpenAI. cfg.Enabled() should
 // be checked by the caller before wiring this in - it works with an empty
 // key, but every call will fail with a 401 from the API.
-func NewOpenAIEnricher(cfg config.OpenAI) *OpenAIEnricher {
-	return &OpenAIEnricher{client: openai.NewClient(cfg)}
+func NewOpenAIEnricher(cfg config.OpenAI, log *slog.Logger) *OpenAIEnricher {
+	return &OpenAIEnricher{client: openai.NewClient(cfg, log)}
 }
 
 func (e *OpenAIEnricher) Enrich(ctx context.Context, term, language string) ([]Sense, error) {

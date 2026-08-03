@@ -43,6 +43,8 @@ func GetInitialWordData(ctx context.Context, client *openai.Client, term, langua
 		return nil, fmt.Errorf("get initial word data: %w", err)
 	}
 
+	fmt.Printf("open ai data: %s", content)
+
 	var envelope sensesEnvelope
 	if err := json.Unmarshal([]byte(content), &envelope); err != nil {
 		return nil, fmt.Errorf("decode senses: %w", err)

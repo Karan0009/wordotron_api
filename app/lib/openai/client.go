@@ -10,7 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/Karan0009/wordotron_api/app/config"
 )
@@ -50,28 +52,49 @@ type chatResponse struct {
 // Client is a thin OpenAI Chat Completions client. It knows nothing about
 // words or senses - just how to send messages and get a reply back.
 type Client struct {
-	apiKey  string
-	model   string
-	baseURL string
-	http    *http.Client
+	apiKey    string
+	model     string
+	baseURL   string
+	http      *http.Client
+	reqLogger *requestLogger
 }
 
 // NewClient builds a Client from config. It works with an empty API key, but
 // every call will fail with a 401 from the API - check cfg.Enabled() before
-// wiring one in.
-func NewClient(cfg config.OpenAI) *Client {
+// wiring one in. Every request/response is logged to cfg.LogDir, one file
+// per day; pass a nil log if you don't want write failures reported.
+func NewClient(cfg config.OpenAI, log *slog.Logger) *Client {
 	return &Client{
-		apiKey:  cfg.APIKey,
-		model:   cfg.Model,
-		baseURL: cfg.BaseURL,
-		http:    &http.Client{Timeout: cfg.Timeout},
+		apiKey:    cfg.APIKey,
+		model:     cfg.Model,
+		baseURL:   cfg.BaseURL,
+		http:      &http.Client{Timeout: cfg.Timeout},
+		reqLogger: newRequestLogger(cfg.LogDir, log),
 	}
 }
 
 // ChatCompletion sends messages to the model and returns the assistant
 // reply's raw content. temperature follows OpenAI's convention: 0 is
-// deterministic, higher is more varied.
+// deterministic, higher is more varied. Every call is logged (input and
+// output, or the error) to a day-named file, regardless of outcome.
 func (c *Client) ChatCompletion(ctx context.Context, messages []ChatMessage, format *ResponseFormat, temperature float64) (string, error) {
+	started := time.Now()
+	entry := requestLogEntry{Timestamp: started, Model: c.model, Messages: messages}
+	defer func() {
+		entry.DurationMS = time.Since(started).Milliseconds()
+		c.reqLogger.write(entry)
+	}()
+
+	content, err := c.chatCompletion(ctx, messages, format, temperature)
+	if err != nil {
+		entry.Error = err.Error()
+		return "", err
+	}
+	entry.Response = content
+	return content, nil
+}
+
+func (c *Client) chatCompletion(ctx context.Context, messages []ChatMessage, format *ResponseFormat, temperature float64) (string, error) {
 	reqBody := chatRequest{
 		Model:          c.model,
 		Messages:       messages,

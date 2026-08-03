@@ -156,6 +156,20 @@ func (s *wordService) List(ctx context.Context, filter models.ListWordsFilter, p
 	if err != nil {
 		return nil, err
 	}
+
+	ids := make([]uuid.UUID, len(words))
+	for i := range words {
+		ids[i] = words[i].ID
+	}
+
+	senses, err := s.store.WordSenses().ListByWords(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range words {
+		words[i].Senses = senses[words[i].ID]
+	}
+
 	return &models.Page[models.Word]{
 		Items: words,
 		Meta:  models.NewPageMeta(page, total),

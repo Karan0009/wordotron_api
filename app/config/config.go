@@ -105,6 +105,10 @@ type OpenAI struct {
 	Model   string
 	BaseURL string
 	Timeout time.Duration
+	// LogDir is where every request/response is logged, one file per day
+	// (YYYY-MM-DD.log, JSON lines). Logging is best-effort: a write failure
+	// never fails the underlying API call.
+	LogDir string
 }
 
 // Enabled reports whether word enrichment can be offered.
@@ -208,6 +212,7 @@ func Load() (*Config, error) {
 			Model:   getString("OPENAI_MODEL", "gpt-4o-mini"),
 			BaseURL: strings.TrimRight(getString("OPENAI_BASE_URL", "https://api.openai.com/v1"), "/"),
 			Timeout: getDuration("OPENAI_TIMEOUT", 20*time.Second),
+			LogDir:  getString("OPENAI_LOG_DIR", "./.data/openai-logs"),
 		},
 		CORS: CORS{
 			AllowedOrigins:   getStringSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173"}),

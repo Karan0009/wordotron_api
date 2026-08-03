@@ -105,7 +105,7 @@ func run() error {
 	// reports a clear 503 rather than the caller nil-panicking.
 	var enricher dictionary.Enricher
 	if cfg.OpenAI.Enabled() {
-		enricher = dictionary.NewOpenAIEnricher(cfg.OpenAI)
+		enricher = dictionary.NewOpenAIEnricher(cfg.OpenAI, log)
 	}
 	wordService := services.NewWordService(store, enricher, cfg, log)
 

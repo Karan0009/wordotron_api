@@ -133,6 +133,44 @@ func (q *Queries) ListWordSensesByWord(ctx context.Context, wordID uuid.UUID) ([
 	return items, nil
 }
 
+const listWordSensesByWordIDs = `-- name: ListWordSensesByWordIDs :many
+SELECT id, word_id, part_of_speech, definition, example, meta, sense_order, created_at, updated_at FROM word_senses
+WHERE word_id = ANY($1::uuid[])
+ORDER BY word_id, sense_order ASC, created_at ASC
+`
+
+// Powers word listing: one query for every sense of every word on the page,
+// instead of one round trip per word.
+func (q *Queries) ListWordSensesByWordIDs(ctx context.Context, wordIds []uuid.UUID) ([]WordSense, error) {
+	rows, err := q.db.Query(ctx, listWordSensesByWordIDs, wordIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WordSense{}
+	for rows.Next() {
+		var i WordSense
+		if err := rows.Scan(
+			&i.ID,
+			&i.WordID,
+			&i.PartOfSpeech,
+			&i.Definition,
+			&i.Example,
+			&i.Meta,
+			&i.SenseOrder,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateWordSense = `-- name: UpdateWordSense :one
 UPDATE word_senses
 SET part_of_speech = CASE WHEN $1::bool THEN NULL

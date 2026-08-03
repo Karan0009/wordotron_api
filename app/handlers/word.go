@@ -10,9 +10,11 @@ import (
 	"github.com/Karan0009/wordotron_api/app/services"
 )
 
-// wordSortWhitelist restricts ?sort= to indexed columns.
+// wordSortWhitelist restricts ?sort= to indexed columns, plus "random" for
+// shuffled browsing (not a stable order across pages - see ListWords in
+// sql/queries/words.sql).
 var wordSortWhitelist = lib.SortWhitelist{
-	Allowed: []string{"created_at", "updated_at", "term"},
+	Allowed: []string{"created_at", "updated_at", "term", "random"},
 	Default: "created_at",
 }
 
@@ -98,7 +100,7 @@ func (h *WordHandler) Get(c fiber.Ctx) error {
 //	@Produce		json
 //	@Param			page		query		int		false	"Page number"	default(1)
 //	@Param			limit		query		int		false	"Page size (max 100)"	default(20)
-//	@Param			sort		query		string	false	"Sort column"	Enums(created_at, updated_at, term)
+//	@Param			sort		query		string	false	"Sort column"	Enums(created_at, updated_at, term, random)
 //	@Param			order		query		string	false	"Sort direction"	Enums(asc, desc)
 //	@Param			search		query		string	false	"Match against term"
 //	@Param			language	query		string	false	"Filter by language"

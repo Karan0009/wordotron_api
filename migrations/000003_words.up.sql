@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS words (
     language       TEXT        NOT NULL DEFAULT 'en'
                                CHECK (language ~ '^[a-z]{2}(-[A-Za-z0-9]{2,8})*$'),
     pronunciation  TEXT        CHECK (pronunciation IS NULL OR length(pronunciation) <= 200),
-    tags           TEXT[]      NOT NULL DEFAULT '{}',
+    tags           TEXT[]      DEFAULT '{}',
     -- Who contributed it. SET NULL rather than CASCADE: deleting a person must
     -- not delete vocabulary other people are studying.
     created_by     UUID        REFERENCES users (id) ON DELETE SET NULL,

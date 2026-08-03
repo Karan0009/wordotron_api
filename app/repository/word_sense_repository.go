@@ -17,6 +17,10 @@ type WordSenseRepository interface {
 	Create(ctx context.Context, in models.CreateWordSenseInput) (*models.WordSense, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.WordSense, error)
 	ListByWord(ctx context.Context, wordID uuid.UUID) ([]models.WordSense, error)
+	// ListByWords returns every sense for the given words in one query,
+	// keyed by word ID - for listing a page of words without one round trip
+	// per word.
+	ListByWords(ctx context.Context, wordIDs []uuid.UUID) (map[uuid.UUID][]models.WordSense, error)
 	Update(ctx context.Context, id uuid.UUID, in models.UpdateWordSenseInput) (*models.WordSense, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	DeleteByWord(ctx context.Context, wordID uuid.UUID) error
@@ -74,6 +78,27 @@ func (r *wordSenseRepository) ListByWord(ctx context.Context, wordID uuid.UUID) 
 		senses = append(senses, *sense)
 	}
 	return senses, nil
+}
+
+func (r *wordSenseRepository) ListByWords(ctx context.Context, wordIDs []uuid.UUID) (map[uuid.UUID][]models.WordSense, error) {
+	byWord := make(map[uuid.UUID][]models.WordSense, len(wordIDs))
+	if len(wordIDs) == 0 {
+		return byWord, nil
+	}
+
+	rows, err := r.q.ListWordSensesByWordIDs(ctx, wordIDs)
+	if err != nil {
+		return nil, lib.Internal(fmt.Errorf("list word senses by words: %w", err))
+	}
+
+	for i := range rows {
+		sense, err := toDomainWordSense(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		byWord[sense.WordID] = append(byWord[sense.WordID], *sense)
+	}
+	return byWord, nil
 }
 
 func (r *wordSenseRepository) Update(ctx context.Context, id uuid.UUID, in models.UpdateWordSenseInput) (*models.WordSense, error) {
