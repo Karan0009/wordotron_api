@@ -46,11 +46,13 @@ func RegisterRoutes(app *fiber.App, deps Dependencies) {
 	app.Get("/health/live", deps.Health.Live)
 	app.Get("/health/ready", deps.Health.Ready)
 
-	app.Get("/openapi.yaml", func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderContentType, "application/yaml; charset=utf-8")
-		return c.SendFile(openAPIPath)
-	})
-	app.Get("/docs", docsPage)
+	if !cfg.App.IsProduction() {
+		app.Get("/openapi.yaml", func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderContentType, "application/yaml; charset=utf-8")
+			return c.SendFile(openAPIPath)
+		})
+		app.Get("/docs", docsPage)
+	}
 
 	// Locally stored uploads are streamed by the API; with S3 or MinIO the
 	// client goes straight to the object store.
