@@ -17,7 +17,7 @@ import (
 // Environment names used across the codebase.
 const (
 	EnvDevelopment = "development"
-	EnvStaging     = "staging"
+	EnvTesting     = "testing"
 	EnvProduction  = "production"
 )
 
@@ -251,7 +251,7 @@ func (c *Config) Validate() error {
 	var problems []string
 
 	switch c.App.Env {
-	case EnvDevelopment, EnvStaging, EnvProduction:
+	case EnvDevelopment, EnvTesting, EnvProduction:
 	default:
 		problems = append(problems, fmt.Sprintf("APP_ENV must be one of development|staging|production, got %q", c.App.Env))
 	}
