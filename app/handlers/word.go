@@ -5,6 +5,7 @@ import (
 
 	"github.com/Karan0009/wordotron_api/app/lib"
 	"github.com/Karan0009/wordotron_api/app/lib/validation"
+	"github.com/Karan0009/wordotron_api/app/middleware"
 	"github.com/Karan0009/wordotron_api/app/models"
 	"github.com/Karan0009/wordotron_api/app/serializers"
 	"github.com/Karan0009/wordotron_api/app/services"
@@ -112,7 +113,12 @@ func (h *WordHandler) List(c fiber.Ctx) error {
 		return err
 	}
 
-	filter := models.ListWordsFilter{}
+	userID, err := middleware.UserID(c)
+	if err != nil {
+		return err
+	}
+
+	filter := models.ListWordsFilter{CreatedBy: &userID}
 	if raw := c.Query("search"); raw != "" {
 		filter.Search = &raw
 	}
