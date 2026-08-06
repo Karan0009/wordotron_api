@@ -46,6 +46,14 @@ type App struct {
 	ShutdownTimeout   time.Duration
 	BodyLimitBytes    int
 	TrustedProxies    []string
+
+	// Heartbeat periodically pings FrontendURL and its own /health/live so
+	// free-tier hosts (e.g. Render) that spin down on inactivity stay warm.
+	HeartbeatEnabled  bool
+	HeartbeatInterval time.Duration
+	// BackendURL is this service's own public URL, used as the heartbeat
+	// ping target. Empty disables the backend leg even if HeartbeatEnabled.
+	BackendURL string
 }
 
 type Log struct {
@@ -173,6 +181,9 @@ func Load() (*Config, error) {
 			ShutdownTimeout:   getDuration("SHUTDOWN_TIMEOUT", 15*time.Second),
 			BodyLimitBytes:    getInt("BODY_LIMIT_BYTES", 4*1024*1024),
 			TrustedProxies:    getStringSlice("TRUSTED_PROXIES", nil),
+			HeartbeatEnabled:  getBool("ENABLE_HEARTBEAT", false),
+			HeartbeatInterval: getDuration("HEARTBEAT_INTERVAL", 12*time.Minute),
+			BackendURL:        strings.TrimRight(getString("BACKEND_URL", ""), "/"),
 		},
 		Log: Log{
 			Level:  getString("LOG_LEVEL", "info"),

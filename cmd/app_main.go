@@ -127,6 +127,8 @@ func run() error {
 	// move this into cmd/worker and drive it from a queue instead.
 	// go pruneExpiredResetTokens(ctx, store, log)
 
+	go lib.StartHeartbeat(ctx, cfg, log)
+
 	// ---- Serve ----------------------------------------------------------
 	serverErr := make(chan error, 1)
 	go func() {
