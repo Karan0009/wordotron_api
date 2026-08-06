@@ -86,7 +86,12 @@ func (h *WordHandler) Get(c fiber.Ctx) error {
 		return err
 	}
 
-	word, err := h.words.Get(c.Context(), id)
+	userID, err := middleware.UserID(c)
+	if err != nil {
+		return err
+	}
+
+	word, err := h.words.Get(c.Context(), id, userID)
 	if err != nil {
 		return err
 	}

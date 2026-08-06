@@ -28,7 +28,7 @@ type WordService interface {
 	// CreateAndEnrich adds a term and fills in its senses via the configured
 	// Enricher. Fails if the term already exists or enrichment is disabled.
 	CreateAndEnrich(ctx context.Context, actor Actor, in CreateWordInput) (*models.Word, error)
-	Get(ctx context.Context, id uuid.UUID) (*models.Word, error)
+	Get(ctx context.Context, id, ownerID uuid.UUID) (*models.Word, error)
 	List(ctx context.Context, filter models.ListWordsFilter, page models.PageParams) (*models.Page[models.Word], error)
 }
 
@@ -133,13 +133,16 @@ func (s *wordService) CreateAndEnrich(ctx context.Context, actor Actor, in Creat
 	s.log.InfoContext(ctx, "word created and enriched",
 		slog.String("word_id", wordID.String()), slog.String("term", term))
 
-	return s.Get(ctx, wordID)
+	return s.Get(ctx, wordID, actor.ID)
 }
 
-func (s *wordService) Get(ctx context.Context, id uuid.UUID) (*models.Word, error) {
+func (s *wordService) Get(ctx context.Context, id, ownerID uuid.UUID) (*models.Word, error) {
 	word, err := s.store.Words().GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if word.CreatedBy == nil || *word.CreatedBy != ownerID {
+		return nil, lib.NotFound("Word")
 	}
 
 	senses, err := s.store.WordSenses().ListByWord(ctx, id)
